@@ -3,7 +3,6 @@
 import logging
 import os
 import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import warnings
 from typing import Annotated
 import numpy as np
