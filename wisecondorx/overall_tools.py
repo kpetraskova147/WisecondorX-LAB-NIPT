@@ -88,11 +88,11 @@ def exec_R(json_dict):
         logging.critical("Rscript failed: {}".format(e))
         sys.exit()
     if logging.getLogger().getEffectiveLevel() > logging.DEBUG:
-       # os.remove(json_dict["infile"])
+        os.remove(json_dict["infile"])
     if "outfile" in json_dict.keys():
         json_out = json.load(open(json_dict["outfile"]))
         if logging.getLogger().getEffectiveLevel() > logging.DEBUG:
-         #   os.remove(json_dict["outfile"])
+            os.remove(json_dict["outfile"])
         return json_out
 
 
