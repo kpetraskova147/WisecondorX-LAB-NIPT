@@ -74,7 +74,7 @@ def plot_threshold_lines(ax, ploidy, start, end, beta=None):
             zorder=4,
         )
 
-    # 3. Center Baseline (Solid Black, drawn on top of points)
+    # 3. Center Baseline (Solid Black, drawn behind dashed lines, over boxes)
     ax.hlines(
         np.log2(2 / ploidy),
         start,
@@ -82,7 +82,7 @@ def plot_threshold_lines(ax, ploidy, start, end, beta=None):
         colors=[COLOR_BASELINE],
         linestyles="solid",
         linewidth=1.2,
-        zorder=5,
+        zorder=3,
     )
 
 
@@ -241,20 +241,37 @@ def write_plots(data):
                 )
 
     # ---------------------------------------------------------
-    # 1. GENOME-WIDE PLOT (2 rows, 3 columns layout)
+    # 1. GENOME-WIDE PLOT (Dynamic Layout Setup)
     # ---------------------------------------------------------
+    legend_pos = os.environ.get("LEGEND_PLACEMENT", "bottom").strip().lower()
+
     fig = plt.figure(figsize=(14, 10))
-    gs = gridspec.GridSpec(
-        2, 3,
-        height_ratios=[1.4, 1.0],
-        width_ratios=[20, 1.2 if num_chrs > 22 else 0.01, 4.5],
-        wspace=0.04,
-        hspace=0.08
-    )
-    ax_main = fig.add_subplot(gs[0, :])
-    ax_box_auto = fig.add_subplot(gs[1, 0])
-    ax_box_sex = fig.add_subplot(gs[1, 1], sharey=ax_box_auto)
-    ax_info = fig.add_subplot(gs[1, 2])
+
+    if legend_pos == "right":
+        gs = gridspec.GridSpec(
+            2, 3, 
+            height_ratios=[1.4, 1.0], 
+            width_ratios=[20, 1.2 if num_chrs > 22 else 0.01, 4.5], 
+            wspace=0.04, 
+            hspace=0.08
+        )
+        ax_main = fig.add_subplot(gs[0, :])
+        ax_box_auto = fig.add_subplot(gs[1, 0])
+        ax_box_sex = fig.add_subplot(gs[1, 1], sharey=ax_box_auto)
+        ax_info = fig.add_subplot(gs[1, 2])
+    else:
+        # Default to Bottom
+        gs = gridspec.GridSpec(
+            3, 2, 
+            height_ratios=[1.4, 1.0, 0.15], 
+            width_ratios=[20, 1.2 if num_chrs > 22 else 0.01], 
+            wspace=0.04, 
+            hspace=0.25
+        )
+        ax_main = fig.add_subplot(gs[0, :])
+        ax_box_auto = fig.add_subplot(gs[1, 0])
+        ax_box_sex = fig.add_subplot(gs[1, 1], sharey=ax_box_auto)
+        ax_info = fig.add_subplot(gs[2, :])
 
     # Top Scatter Plot
     ax_main.set_facecolor("white")
@@ -279,7 +296,7 @@ def write_plots(data):
         ax_main.axvline(idx, color="#F3F4F6", linewidth=0.5, alpha=0.5, zorder=1)
 
     # Scatter points
-    dot_sizes = (weights / np.pi) ** 0.5 * 20
+    dot_sizes = (weights / np.pi) ** 0.5 * 8
     ax_main.scatter(
         range(len(ratio)),
         ratio,
@@ -352,18 +369,18 @@ def write_plots(data):
     auto_count = min(22, num_chrs)
     ax_box_auto.boxplot(
         box_list[:auto_count],
-        labels=labels[:auto_count],
         patch_artist=True,
         showfliers=True,
-        flierprops=dict(marker="o", markersize=2.5, markerfacecolor="black", alpha=0.7),
-        medianprops=dict(color="#D97706", linewidth=1.5),
+        flierprops=dict(marker="o", markersize=2.3, markerfacecolor="black", alpha=0.7),
+        medianprops=dict(color="#D97706", linewidth=1.5, zorder=5),
         boxprops=dict(facecolor="white", color="black", linewidth=1),
         whiskerprops=dict(color="black", linewidth=1),
         capprops=dict(color="black", linewidth=1),
     )
     ax_box_auto.set_ylim(-0.14, 0.14)
+    ax_box_auto.set_xlim(0.5, auto_count + 0.5)
     ax_box_auto.set_ylabel(r"$\log_2$ (ratio)", fontsize=11)
-    ax_box_auto.set_xticklabels(labels[:auto_count], rotation=45, ha="right", fontsize=9)
+    ax_box_auto.set_xticklabels(short_labels[:auto_count], rotation=0, ha="center", fontsize=9)
     ax_box_auto.grid(axis="y", alpha=0.3)
 
     plot_threshold_lines(ax_box_auto, 2, 0.5, auto_count + 0.5, beta=beta)
@@ -374,17 +391,17 @@ def write_plots(data):
     if num_chrs > 22:
         ax_box_sex.boxplot(
             box_list[22:],
-            labels=labels[22:],
             patch_artist=True,
             showfliers=True,
-            flierprops=dict(marker="o", markersize=2.5, markerfacecolor="black", alpha=0.7),
-            medianprops=dict(color="#D97706", linewidth=1.5),
+            flierprops=dict(marker="o", markersize=2.3, markerfacecolor="black", alpha=0.7),
+            medianprops=dict(color="#D97706", linewidth=1.5, zorder=5),
             boxprops=dict(facecolor="white", color="black", linewidth=1),
             whiskerprops=dict(color="black", linewidth=1),
             capprops=dict(color="black", linewidth=1),
         )
         ax_box_sex.set_ylim(-0.14, 0.14)
-        ax_box_sex.set_xticklabels(labels[22:], rotation=45, ha="right", fontsize=9)
+        ax_box_sex.set_xlim(0.5, len(labels[22:]) + 0.5)
+        ax_box_sex.set_xticklabels(short_labels[22:], rotation=0, ha="center", fontsize=9)
         ax_box_sex.tick_params(axis="y", left=False, labelleft=False, right=True, labelright=True)
         ax_box_sex.grid(axis="y", alpha=0.3)
 
@@ -392,10 +409,17 @@ def write_plots(data):
         plot_threshold_lines(ax_box_sex, sex_ploidy, 0.5, len(labels[22:]) + 0.5, beta=beta)
 
     # ---------------------------------------------------------
-    # 4. BOTTOM-RIGHT QC / METADATA INFO CARD
+    # 4. QC / METADATA INFO CARD (Dynamic Drawing)
     # ---------------------------------------------------------
     ax_info.set_axis_off()
-    bbox_props = dict(boxstyle="round,pad=0.8", facecolor="#F8FAFC", edgecolor="#CBD5E1", linewidth=1)
+    
+    # Clean, sharp corners with a classic scientific plot style
+    bbox_props = dict(
+        boxstyle="square,pad=0.8", 
+        facecolor="white", 
+        edgecolor="#888888", 
+        linewidth=1
+    )
 
     # NIPT Fetal Fraction Status
     ff_display = f"{beta * 100:.1f} %" if beta is not None else "N/A"
@@ -405,29 +429,47 @@ def write_plots(data):
     avg_id_raw = os.environ.get("AVG_IDENTITY", "").strip()
     accuracy_display = f"{avg_id_raw} %" if avg_id_raw else "N/A"
 
-    # Safely format the sample title for Matplotlib's MathText (escaping underscores and spaces)
+    # Safely format the sample title for Matplotlib's MathText
     display_title = sample_title if sample_title else "Sample Summary"
     safe_title = display_title.replace("_", r"\_").replace(" ", r"\ ")
 
-    info_text = (
-        f"$\\bf{{{safe_title}}}$\n\n"
-        f"Reads: {n_reads_formatted}\n"
-        f"Gender: {gender_label}\n"
-        f"FF: {ff_display}\n"
-        f"Accuracy: {accuracy_display}\n"
-        f"Seq QC: {seq_qc}\n"
-    )
-
-
-    ax_info.text(
-        0.05, 0.5, info_text,
-        fontsize=10,
-        verticalalignment="center",
-        horizontalalignment="left",
-        color="#1F2937",
-        bbox=bbox_props,
-        transform=ax_info.transAxes,
-    )
+    if legend_pos == "right":
+        info_text = (
+            f"$\\bf{{{safe_title}}}$\n\n"
+            f"Reads: {n_reads_formatted}\n"
+            f"Gender: {gender_label}\n"
+            f"FF: {ff_display}\n"
+            f"Accuracy: {accuracy_display}\n"
+            f"Seq QC: {seq_qc}\n"
+        )
+        ax_info.text(
+            0.45, 0.05, info_text,
+            fontsize=10,
+            verticalalignment="bottom",
+            horizontalalignment="left",
+            color="black",
+            bbox=bbox_props,
+            transform=ax_info.transAxes,
+        )
+    else:
+        # Default to Bottom Horizontal
+        info_text = (
+            f"$\\bf{{{safe_title}}}$   |   "
+            f"Reads: {n_reads_formatted}   |   "
+            f"Gender: {gender_label}   |   "
+            f"FF: {ff_display}   |   "
+            f"Accuracy: {accuracy_display}   |   "
+            f"Seq QC: {seq_qc}"
+        )
+        ax_info.text(
+            0.5, 0.5, info_text,
+            fontsize=11,
+            verticalalignment="center",
+            horizontalalignment="center",
+            color="black",
+            bbox=bbox_props,
+            transform=ax_info.transAxes,
+        )
 
     plt.savefig(os.path.join(out_dir, "genome_wide.png"), dpi=300, bbox_inches="tight")
     plt.close()
@@ -445,7 +487,7 @@ def write_plots(data):
         chr_ratio = ratio[chr_start:chr_end]
         chr_weights = weights[chr_start:chr_end]
         chr_dot_cols = dot_cols[chr_start:chr_end]
-        chr_dot_sizes = (chr_weights / np.pi) ** 0.5 * 30
+        chr_dot_sizes = (chr_weights / np.pi) ** 0.5 * 15
 
         stats = get_boxplot_stats(chr_ratio)
         if np.isnan(stats[0]):
