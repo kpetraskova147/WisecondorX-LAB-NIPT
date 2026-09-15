@@ -6,21 +6,19 @@ from matplotlib import gridspec
 from matplotlib.lines import Line2D
 
 # --- Exact Color Scheme ---
-COLOR_CHR_ODD = "#3A75A4"    # Steel Blue (chr1, chr3, ...)
-COLOR_CHR_EVEN = "#D49B27"   # Amber Gold (chr2, chr4, ...)
-COLOR_TRISOMY = "#E11D48"    # Crimson Red (Fetal Gain / +)
-COLOR_MONOSOMY = "#14B8A6"   # Rich Teal (Fetal Loss / -)
-COLOR_MATERNAL = "#555555"   # Charcoal Grey (Maternal 1n / 3n limits)
-COLOR_BASELINE = "#000000"   # Solid Black (0.0 Center Baseline)
-COLOR_GRID = "#E0E0E0"       # Faint Grid / Boundary Line
-COLOR_GENE = "#9C4221"       # Gene Label Callouts
-
+COLOR_CHR_ODD = "#3A75A4"    
+COLOR_CHR_EVEN = "#D49B27"   
+COLOR_TRISOMY = "#E11D48"           # Fetal limit line for trisomy
+COLOR_MONOSOMY = "#14B8A6"          # Fetal limit line for monosomy
+COLOR_MATERNAL = "#520C61"          # Maternal limit line
+COLOR_BASELINE = "#000000"          # Baseline of the upper graph
+COLOR_GRID = "#999999"              # Boundary of chromosomes
+COLOR_GENE = "#9C4221"              # I have no idea :D
 
 def get_aberration_cutoff(beta, ploidy=2):
     loss_cutoff = np.log2((ploidy - (beta / 2)) / ploidy)
     gain_cutoff = np.log2((ploidy + (beta / 2)) / ploidy)
     return loss_cutoff, gain_cutoff
-
 
 def format_n_reads(n_reads):
     s = str(int(n_reads))
@@ -30,61 +28,16 @@ def format_n_reads(n_reads):
         s = s[:-3]
     return ".".join(reversed(parts))
 
-
 def plot_threshold_lines(ax, ploidy, start, end, beta=None):
-    # 1. Maternal Limits (Dotted Charcoal)
-    ax.hlines(
-        np.log2(1 / ploidy),
-        start,
-        end,
-        colors=[COLOR_MATERNAL],
-        linestyles="dotted",
-        linewidth=1.5,
-        zorder=4,
-    )
-    ax.hlines(
-        np.log2(3 / ploidy),
-        start,
-        end,
-        colors=[COLOR_MATERNAL],
-        linestyles="dotted",
-        linewidth=1.5,
-        zorder=4,
-    )
+    ax.hlines(np.log2(1 / ploidy), start, end, colors=[COLOR_MATERNAL], linestyles="dotted", linewidth=1.5, zorder=4)
+    ax.hlines(np.log2(3 / ploidy), start, end, colors=[COLOR_MATERNAL], linestyles="dotted", linewidth=1.5, zorder=4)
 
-    # 2. Fetal Fraction Limits (Dashed Red / Teal)
     if beta is not None and ploidy > 0:
         loss_cutoff, gain_cutoff = get_aberration_cutoff(beta, ploidy)
-        ax.hlines(
-            gain_cutoff,
-            start,
-            end,
-            colors=[COLOR_TRISOMY],
-            linestyles="dashed",
-            linewidth=1.5,
-            zorder=4,
-        )
-        ax.hlines(
-            loss_cutoff,
-            start,
-            end,
-            colors=[COLOR_MONOSOMY],
-            linestyles="dashed",
-            linewidth=1.5,
-            zorder=4,
-        )
+        ax.hlines(gain_cutoff, start, end, colors=[COLOR_TRISOMY], linestyles="dashed", linewidth=1.5, zorder=4)
+        ax.hlines(loss_cutoff, start, end, colors=[COLOR_MONOSOMY], linestyles="dashed", linewidth=1.5, zorder=4)
 
-    # 3. Center Baseline (Solid Black, drawn behind dashed lines, over boxes)
-    ax.hlines(
-        np.log2(2 / ploidy),
-        start,
-        end,
-        colors=[COLOR_BASELINE],
-        linestyles="solid",
-        linewidth=1.2,
-        zorder=3,
-    )
-
+    ax.hlines(np.log2(2 / ploidy), start, end, colors=[COLOR_BASELINE], linestyles="solid", linewidth=1.2, zorder=3)
 
 def get_boxplot_stats(data):
     if len(data) == 0:
@@ -97,7 +50,6 @@ def get_boxplot_stats(data):
     upper = min(upper, np.nanmax(data))
     return [lower, upper]
 
-
 def write_plots(data):
     plt.switch_backend("Agg")
     out_dir = data["out_dir"]
@@ -109,7 +61,6 @@ def write_plots(data):
     gender_label = "XX (Female)" if gender == "F" else "XY (Male)"
 
     beta = float(data["beta"]) if data.get("beta") not in [None, "None", "nan", ""] else None
-    zcutoff = float(data["zscore"])
     binsize = int(data["binsize"])
     n_reads_raw = int(data["n_reads"])
     n_reads_formatted = format_n_reads(n_reads_raw)
@@ -117,14 +68,14 @@ def write_plots(data):
     regions_path = data["regions"]
     plot_title = data.get("plot_title")
 
-    # --- Title Resolution: $(RUN_NUMBER)_$BARCODE or plot_title fallback ---
     run_number = os.environ.get("RUN_NUMBER", "").strip()
     barcode = os.environ.get("BARCODE", "").strip()
+    analysis_type = os.environ.get("ANALYSIS_TYPE", "").strip()
 
     if run_number and barcode:
         sample_title = f"{run_number}_{barcode}"
-    elif run_number or barcode:
-        sample_title = f"{run_number}{barcode}"
+        if analysis_type:
+            sample_title += f"_{analysis_type}"
     else:
         sample_title = plot_title if plot_title else ""
 
@@ -132,7 +83,6 @@ def write_plots(data):
     results_w = data["results_w"]
     results_c = data["results_c"]
 
-    # Flatten results_r and results_w for genome-wide plot
     ratio = []
     weights = []
     bins_per_chr = []
@@ -161,25 +111,17 @@ def write_plots(data):
     if num_chrs >= 24:
         labels[23] = "chrY"
 
-    # Short numeric labels for top scatter plot (1, 2, ..., 22, X, Y)
     short_labels = [l.replace("chr", "") for l in labels]
 
-    # Assign alternating chromosome dot colors
     dot_cols = []
     for i in range(num_chrs):
         chr_color = COLOR_CHR_ODD if (i % 2 == 0) else COLOR_CHR_EVEN
         dot_cols.extend([chr_color] * bins_per_chr[i])
 
-    # Boxplot data per chromosome
     box_list = []
-    l_whis_per_chr = []
-    h_whis_per_chr = []
     for i in range(num_chrs):
         chr_data = ratio[chr_ends[i] : chr_ends[i + 1]]
         box_list.append(chr_data[~np.isnan(chr_data)])
-        stats = get_boxplot_stats(chr_data)
-        l_whis_per_chr.append(stats[0])
-        h_whis_per_chr.append(stats[1])
 
     chr_wide_upper_limit = 1.0
     chr_wide_lower_limit = -1.5
@@ -190,70 +132,23 @@ def write_plots(data):
             chr_wide_lower_limit = float(ylim_parts[0])
             chr_wide_upper_limit = float(ylim_parts[1])
 
-    # Parse target regions
     gene_labels = []
-    if regions_path and os.path.exists(regions_path):
-        with open(regions_path, "r") as f:
-            for line in f:
-                parts = line.strip().split("\t")
-                if len(parts) < 4:
-                    continue
-                chr_name = parts[0].replace("chr", "")
-                if chr_name == "X":
-                    c_idx = 22
-                elif chr_name == "Y":
-                    c_idx = 23
-                else:
-                    try:
-                        c_idx = int(chr_name) - 1
-                    except ValueError:
-                        continue
-
-                if c_idx >= num_chrs:
-                    continue
-
-                try:
-                    r_start = int(parts[1])
-                    r_end = int(parts[2])
-                except ValueError:
-                    continue
-
-                start_bin = r_start // binsize + chr_ends[c_idx]
-                end_bin = r_end // binsize + chr_ends[c_idx]
-
-                if start_bin >= end_bin:
-                    continue
-
-                reg_ratio = np.nanmean(ratio[start_bin : end_bin + 1])
-                label_pos = (
-                    np.nanmax(ratio[start_bin : end_bin + 1]) + 0.2
-                    if reg_ratio > 0
-                    else np.nanmin(ratio[start_bin : end_bin + 1]) - 0.2
-                )
-                gene_labels.append(
-                    {
-                        "start_bin": start_bin,
-                        "end_bin": end_bin,
-                        "label": parts[3],
-                        "pos": label_pos,
-                        "adj": 0 if reg_ratio > 0 else 1,
-                    }
-                )
 
     # ---------------------------------------------------------
     # 1. GENOME-WIDE PLOT (Dynamic Layout Setup)
     # ---------------------------------------------------------
     legend_pos = os.environ.get("LEGEND_PLACEMENT", "bottom").strip().lower()
 
-    fig = plt.figure(figsize=(14, 10))
+    fig = plt.figure(figsize=(13, 10))
+    sex_width = num_chrs - 22 if num_chrs > 22 else 0.01
 
     if legend_pos == "right":
         gs = gridspec.GridSpec(
             2, 3, 
-            height_ratios=[1.4, 1.0], 
-            width_ratios=[20, 1.2 if num_chrs > 22 else 0.01, 4.5], 
+            height_ratios=[1.7, 1.0],
+            width_ratios=[22, sex_width, 4.5], 
             wspace=0.04, 
-            hspace=0.08
+            hspace=0.15
         )
         ax_main = fig.add_subplot(gs[0, :])
         ax_box_auto = fig.add_subplot(gs[1, 0])
@@ -263,40 +158,35 @@ def write_plots(data):
         # Default to Bottom
         gs = gridspec.GridSpec(
             3, 2, 
-            height_ratios=[1.4, 1.0, 0.15], 
-            width_ratios=[20, 1.2 if num_chrs > 22 else 0.01], 
+            height_ratios=[1.7, 1.0, 0.12], 
+            width_ratios=[22, sex_width], 
             wspace=0.04, 
-            hspace=0.25
+            hspace=0.15
         )
         ax_main = fig.add_subplot(gs[0, :])
         ax_box_auto = fig.add_subplot(gs[1, 0])
         ax_box_sex = fig.add_subplot(gs[1, 1], sharey=ax_box_auto)
         ax_info = fig.add_subplot(gs[2, :])
 
-    # Top Scatter Plot
     ax_main.set_facecolor("white")
     ax_main.set_xlim(0, chr_ends[num_chrs])
     ax_main.set_ylim(chr_wide_lower_limit, chr_wide_upper_limit)
     ax_main.set_ylabel(r"$\log_2$ (ratio)", fontsize=11)
 
-    # Reference lines (Maternal, Fetal, Baseline)
     if gender == "F":
         plot_threshold_lines(ax_main, 2, 0, chr_ends[num_chrs], beta=beta)
     else:
         plot_threshold_lines(ax_main, 2, 0, chr_ends[22], beta=beta)
         plot_threshold_lines(ax_main, 1, chr_ends[22], chr_ends[num_chrs], beta=beta)
 
-    # Chromosome Boundary Separators
     for end in chr_ends[1:num_chrs]:
         ax_main.axvline(end, color=COLOR_GRID, linestyle="--", linewidth=0.8, zorder=1)
 
-    # Masked Regions
     masked_indices = np.where(np.isnan(ratio))[0]
     for idx in masked_indices:
         ax_main.axvline(idx, color="#F3F4F6", linewidth=0.5, alpha=0.5, zorder=1)
 
-    # Scatter points
-    dot_sizes = (weights / np.pi) ** 0.5 * 8
+    dot_sizes = (weights / np.pi) ** 0.5 * 20
     ax_main.scatter(
         range(len(ratio)),
         ratio,
@@ -307,34 +197,9 @@ def write_plots(data):
         zorder=2,
     )
 
-    # Gene labels
-    for gl in gene_labels:
-        ax_main.scatter(
-            range(gl["start_bin"], gl["end_bin"] + 1),
-            ratio[gl["start_bin"] : gl["end_bin"] + 1],
-            facecolors="none",
-            edgecolors=COLOR_GENE,
-            s=dot_sizes[gl["start_bin"] : gl["end_bin"] + 1] * 1.5,
-            linewidths=1.5,
-            zorder=3,
-        )
-        ax_main.text(
-            (gl["start_bin"] + gl["end_bin"]) / 2,
-            gl["pos"],
-            gl["label"],
-            color=COLOR_GENE,
-            rotation=90,
-            va="bottom" if gl["adj"] == 0 else "top",
-            ha="center",
-            fontsize=8,
-            zorder=6,
-        )
-
-    # Aberration Segments
     for ab in results_c:
         chr_idx = int(ab[0])
-        if chr_idx >= num_chrs:
-            continue
+        if chr_idx >= num_chrs: continue
         start = int(ab[1]) + chr_ends[chr_idx]
         end = int(ab[2]) + chr_ends[chr_idx]
         height = float(ab[4])
@@ -342,26 +207,13 @@ def write_plots(data):
         face_color = list(plt.cm.colors.to_rgba(color))
         face_color[3] = 0.25
         ax_main.add_patch(
-            plt.Rectangle(
-                (start, 0),
-                end - start,
-                height,
-                facecolor=face_color,
-                edgecolor=color,
-                linewidth=0.8,
-                zorder=3,
-            )
+            plt.Rectangle((start, 0), end - start, height, facecolor=face_color, edgecolor=color, linewidth=0.8, zorder=3)
         )
         ax_main.hlines(height, start, end, colors=[color], linewidth=2.5, zorder=5)
 
-    # Chromosome numbers directly below top panel
     ax_main.set_xticks(chr_mids)
     ax_main.set_xticklabels(short_labels, fontsize=8, color="#333333")
-    ax_main.tick_params(axis="x", length=3, color="#888888", pad=3)
-
-    # Header title with sample identifier
-#    if sample_title:
-#        ax_main.set_title(sample_title, fontsize=13, fontweight="bold", pad=12, color="#1F2937")
+    ax_main.tick_params(axis="x", length=3, color="#888888", pad=2)
 
     # ---------------------------------------------------------
     # 2. AUTOSOME BOXPLOTS (chr1 - chr22)
@@ -369,8 +221,8 @@ def write_plots(data):
     auto_count = min(22, num_chrs)
     ax_box_auto.boxplot(
         box_list[:auto_count],
-        patch_artist=True,
-        showfliers=True,
+        widths=0.4, # <-- ZÚŽENÍ KRABIČEK
+        patch_artist=True, showfliers=True,
         flierprops=dict(marker="o", markersize=2.3, markerfacecolor="black", alpha=0.7),
         medianprops=dict(color="#D97706", linewidth=1.5, zorder=5),
         boxprops=dict(facecolor="white", color="black", linewidth=1),
@@ -382,7 +234,6 @@ def write_plots(data):
     ax_box_auto.set_ylabel(r"$\log_2$ (ratio)", fontsize=11)
     ax_box_auto.set_xticklabels(short_labels[:auto_count], rotation=0, ha="center", fontsize=9)
     ax_box_auto.grid(axis="y", alpha=0.3)
-
     plot_threshold_lines(ax_box_auto, 2, 0.5, auto_count + 0.5, beta=beta)
 
     # ---------------------------------------------------------
@@ -391,8 +242,8 @@ def write_plots(data):
     if num_chrs > 22:
         ax_box_sex.boxplot(
             box_list[22:],
-            patch_artist=True,
-            showfliers=True,
+            widths=0.4, # <-- ZÚŽENÍ KRABIČEK
+            patch_artist=True, showfliers=True,
             flierprops=dict(marker="o", markersize=2.3, markerfacecolor="black", alpha=0.7),
             medianprops=dict(color="#D97706", linewidth=1.5, zorder=5),
             boxprops=dict(facecolor="white", color="black", linewidth=1),
@@ -404,74 +255,37 @@ def write_plots(data):
         ax_box_sex.set_xticklabels(short_labels[22:], rotation=0, ha="center", fontsize=9)
         ax_box_sex.tick_params(axis="y", left=False, labelleft=False, right=True, labelright=True)
         ax_box_sex.grid(axis="y", alpha=0.3)
-
         sex_ploidy = 2 if gender == "F" else 1
         plot_threshold_lines(ax_box_sex, sex_ploidy, 0.5, len(labels[22:]) + 0.5, beta=beta)
 
     # ---------------------------------------------------------
-    # 4. QC / METADATA INFO CARD (Dynamic Drawing)
+    # 4. QC / METADATA INFO CARD
     # ---------------------------------------------------------
     ax_info.set_axis_off()
     
-    # Clean, sharp corners with a classic scientific plot style
-    bbox_props = dict(
-        boxstyle="square,pad=0.8", 
-        facecolor="white", 
-        edgecolor="#888888", 
-        linewidth=1
-    )
+    bbox_props = dict(boxstyle="square,pad=0.8", facecolor="white", edgecolor="#888888", linewidth=1)
 
-    # NIPT Fetal Fraction Status
     ff_display = f"{beta * 100:.1f} %" if beta is not None else "N/A"
-
-    # Sequencing QC and Accuracy Status
     seq_qc = os.environ.get("SEQ_QC_STATUS", "N/A")
     avg_id_raw = os.environ.get("AVG_IDENTITY", "").strip()
     accuracy_display = f"{avg_id_raw} %" if avg_id_raw else "N/A"
-
-    # Safely format the sample title for Matplotlib's MathText
     display_title = sample_title if sample_title else "Sample Summary"
     safe_title = display_title.replace("_", r"\_").replace(" ", r"\ ")
 
     if legend_pos == "right":
         info_text = (
-            f"$\\bf{{{safe_title}}}$\n\n"
-            f"Reads: {n_reads_formatted}\n"
-            f"Gender: {gender_label}\n"
-            f"FF: {ff_display}\n"
-            f"Accuracy: {accuracy_display}\n"
-            f"Seq QC: {seq_qc}\n"
+            f"$\\bf{{{safe_title}}}$\n\nReads: {n_reads_formatted}\nGender: {gender_label}\n"
+            f"FF: {ff_display}\nAccuracy: {accuracy_display}\nSeq QC: {seq_qc}\n"
         )
-        ax_info.text(
-            0.45, 0.05, info_text,
-            fontsize=10,
-            verticalalignment="bottom",
-            horizontalalignment="left",
-            color="black",
-            bbox=bbox_props,
-            transform=ax_info.transAxes,
-        )
+        ax_info.text(0.45, 0.05, info_text, fontsize=10, va="bottom", ha="left", color="black", bbox=bbox_props, transform=ax_info.transAxes)
     else:
-        # Default to Bottom Horizontal
         info_text = (
-            f"$\\bf{{{safe_title}}}$   |   "
-            f"Reads: {n_reads_formatted}   |   "
-            f"Gender: {gender_label}   |   "
-            f"FF: {ff_display}   |   "
-            f"Accuracy: {accuracy_display}   |   "
-            f"Seq QC: {seq_qc}"
+            f"$\\bf{{{safe_title}}}$   |   Reads: {n_reads_formatted}   |   Gender: {gender_label}   |   "
+            f"FF: {ff_display}   |   Accuracy: {accuracy_display}   |   Seq QC: {seq_qc}"
         )
-        ax_info.text(
-            0.5, 0.5, info_text,
-            fontsize=11,
-            verticalalignment="center",
-            horizontalalignment="center",
-            color="black",
-            bbox=bbox_props,
-            transform=ax_info.transAxes,
-        )
+        ax_info.text(0.5, 0.5, info_text, fontsize=11, va="center", ha="center", color="black", bbox=bbox_props, transform=ax_info.transAxes)
 
-    plt.savefig(os.path.join(out_dir, "genome_wide.png"), dpi=300, bbox_inches="tight")
+    plt.savefig(os.path.join(out_dir, "genome_wide.png"), dpi=300, bbox_inches="tight", pad_inches=0.3)
     plt.close()
 
     # ---------------------------------------------------------
@@ -487,7 +301,7 @@ def write_plots(data):
         chr_ratio = ratio[chr_start:chr_end]
         chr_weights = weights[chr_start:chr_end]
         chr_dot_cols = dot_cols[chr_start:chr_end]
-        chr_dot_sizes = (chr_weights / np.pi) ** 0.5 * 15
+        chr_dot_sizes = (chr_weights / np.pi) ** 0.5 * 35
 
         stats = get_boxplot_stats(chr_ratio)
         if np.isnan(stats[0]):
@@ -515,26 +329,14 @@ def write_plots(data):
         c_ploidy = 1 if (c >= 22 and gender == "M") else 2
         plot_threshold_lines(ax_chr, c_ploidy, chr_start, chr_end, beta=beta)
 
-        # Masked regions
         chr_masked = np.where(np.isnan(chr_ratio))[0]
         for idx in chr_masked:
             ax_chr.axvline(chr_start + idx, color="#F3F4F6", linewidth=1, alpha=0.5)
 
-        # Scatter points
-        ax_chr.scatter(
-            range(chr_start, chr_end),
-            chr_ratio,
-            c=chr_dot_cols,
-            s=chr_dot_sizes,
-            edgecolors="none",
-            alpha=0.8,
-            zorder=2,
-        )
+        ax_chr.scatter(range(chr_start, chr_end), chr_ratio, c=chr_dot_cols, s=chr_dot_sizes, edgecolors="none", alpha=0.8, zorder=2)
 
-        # Aberration Segments
         for ab in results_c:
-            if int(ab[0]) != c:
-                continue
+            if int(ab[0]) != c: continue
             seg_start = int(ab[1]) + chr_start
             seg_end = int(ab[2]) + chr_start
             height = float(ab[4])
@@ -542,43 +344,10 @@ def write_plots(data):
             face_color = list(plt.cm.colors.to_rgba(color))
             face_color[3] = 0.25
             ax_chr.add_patch(
-                plt.Rectangle(
-                    (seg_start, 0),
-                    seg_end - seg_start,
-                    height,
-                    facecolor=face_color,
-                    edgecolor=color,
-                    linewidth=0.8,
-                    zorder=3,
-                )
+                plt.Rectangle((seg_start, 0), seg_end - seg_start, height, facecolor=face_color, edgecolor=color, linewidth=0.8, zorder=3)
             )
             ax_chr.hlines(height, seg_start, seg_end, colors=[color], linewidth=2.5, zorder=5)
 
-        # Gene labels
-        for gl in gene_labels:
-            if gl["start_bin"] >= chr_start and gl["end_bin"] <= chr_end:
-                ax_chr.scatter(
-                    range(gl["start_bin"], gl["end_bin"] + 1),
-                    ratio[gl["start_bin"] : gl["end_bin"] + 1],
-                    facecolors="none",
-                    edgecolors=COLOR_GENE,
-                    s=chr_dot_sizes[gl["start_bin"] - chr_start : gl["end_bin"] - chr_start + 1] * 1.5,
-                    linewidths=1.5,
-                    zorder=3,
-                )
-                ax_chr.text(
-                    (gl["start_bin"] + gl["end_bin"]) / 2,
-                    gl["pos"],
-                    gl["label"],
-                    color=COLOR_GENE,
-                    rotation=90,
-                    va="bottom" if gl["adj"] == 0 else "top",
-                    ha="center",
-                    fontsize=9,
-                    zorder=6,
-                )
-
-        # X-axis (MB)
         x_ticks = np.linspace(chr_start, chr_end, 11)
         x_labels = [f"{((t - chr_start) * binsize) / 1e6:.1f}" for t in x_ticks]
         ax_chr.set_xticks(x_ticks)
